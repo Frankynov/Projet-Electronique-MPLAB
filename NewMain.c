@@ -27,10 +27,10 @@
 #define LEFT    PORTCbits.RC1
 #define CENTER  PORTEbits.RE2
  * Boutons Kiki */
-#define UP      PORTCbits.RC1
-#define DOWN    PORTEbits.RE2
-#define RIGHT   PORTEbits.RE1
-#define LEFT    PORTCbits.RC0
+#define DOWN      PORTCbits.RC1
+#define UP    PORTEbits.RE2
+#define LEFT   PORTEbits.RE1
+#define RIGHT    PORTCbits.RC0
 #define CENTER  PORTEbits.RE0
 
 #define PORT_LED PORTCbits.RC2
@@ -71,8 +71,9 @@ void check_root(char *);
 unsigned char flag_rx_usb_completed = 0;
 unsigned char flag_bouton_pressed = 0;
 char caractere_usb_recu;
-char trame_usb_recue_pk[4];
+char trame_usb_recue_pk[5];
 char trame_usb_nom_prenom[20];
+char bufRecuRFID;
 
 /*
  ### DECLARATION DES INTERRUPTIONS ###
@@ -154,6 +155,8 @@ void main(void) {
     // Registres globaux d'interruptions
     INTCONbits.GIE = 1;
     INTCONbits.PEIE = 1; // = GIEL, interruptions basses
+    INTCONbits.INT0IE = 1; // Activation sur INT0
+    INTCON2bits.INTEDG0 = 0;
     RCONbits.IPEN = 1;
     // Registres d'interruption sur USART2 - RFID
     IPR3bits.RC2IP = 1;
@@ -167,6 +170,7 @@ void main(void) {
 
     // On commence !
     OpenXLCD(FOUR_BIT & LINES_5X7);
+    PORT_RELAIS = 0;
     //AFFICHAGE AU DEMARRAGE
     while (BusyXLCD());
     WriteCmdXLCD(0x01); //Clear LCD
@@ -193,7 +197,7 @@ void main(void) {
     SetDDRamAddr(0x40);
     while (BusyXLCD());
     while (1) {
-        
+
     }
 
 }
@@ -234,13 +238,19 @@ void InterruptionHaute(void) {
 
     if (INT_USB == 1) {
         trame_usb_recue_pk[cpt] = RCREG1;
-        while (TXSTA1bits.TRMT != 1);
-        TXREG1 = trame_usb_recue_pk[cpt];
+        //while (TXSTA1bits.TRMT != 1);
+        //TXREG1 = trame_usb_recue_pk[cpt];
         while (BusyXLCD());
         WriteDataXLCD(trame_usb_recue_pk[cpt]);
         while (BusyXLCD());
+        
+        if (trame_usb_recue_pk[cpt] == '\0') {
+            while (BusyXLCD());
+            putrsXLCD("BZERO");
+            while (BusyXLCD());
+        }
         cpt++;
-        if (cpt == 4) {
+        if (cpt == 5) {
             check_root(trame_usb_recue_pk);
             cpt = 0;
         }
@@ -248,13 +258,13 @@ void InterruptionHaute(void) {
 
     // Détection de pression de bouton
     if (INT_BOUTON == 1) {
-        PORT_LED = 1;
         Delay10KTCYx(2);
+        PORT_LED = 1;
         if (LEFT == 0) {
             flag_bouton_pressed = 1;
             send_usart_pk('P', 'K', '0', '2');
         }
-        if (RIGHT == 0){
+        if (RIGHT == 0) {
             flag_bouton_pressed = 1;
             send_usart_pk('P', 'K', '0', '3');
         }
