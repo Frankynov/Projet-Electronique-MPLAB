@@ -20,11 +20,19 @@
 #define ANA     1
 #define OUTPUT  0
 #define INPUT   1
+/* Boutons Ludo
 #define UP      PORTEbits.RE1
 #define DOWN    PORTCbits.RC0
 #define RIGHT   PORTEbits.RE0
 #define LEFT    PORTCbits.RC1
 #define CENTER  PORTEbits.RE2
+ * Boutons Kiki */
+#define UP      PORTCbits.RC1
+#define DOWN    PORTEbits.RE2
+#define RIGHT   PORTEbits.RE1
+#define LEFT    PORTCbits.RC0
+#define CENTER  PORTEbits.RE0
+
 #define PORT_LED PORTCbits.RC2
 #define PORT_RELAIS PORTBbits.RB4
 //Interruptions RFID, USB et Boutons
@@ -55,7 +63,7 @@ void lectureRFID(char);
 void LiczCRC2(unsigned char *, unsigned short *, unsigned char);
 void send_usart_pk(char, char, char, char);
 void check_root(char *);
-void restart(void);
+
 
 /*
  ### DECLARATION DES VARIABLES GLOBALES ###
@@ -64,6 +72,7 @@ unsigned char flag_rx_usb_completed = 0;
 unsigned char flag_bouton_pressed = 0;
 char caractere_usb_recu;
 char trame_usb_recue_pk[4];
+char trame_usb_nom_prenom[20];
 
 /*
  ### DECLARATION DES INTERRUPTIONS ###
@@ -164,21 +173,27 @@ void main(void) {
     while (BusyXLCD());
     SetDDRamAddr(0x00); //Première ligne Première colonne
     while (BusyXLCD());
-    putrsXLCD("Bienvenue ! ");
+    putrsXLCD("Starting ... ");
+    while (BusyXLCD());
+    SetDDRamAddr(0x40);
+    while (BusyXLCD());
+    putrsXLCD("TiOS 0.42 - 2014");
+    while (BusyXLCD());
+    Delay10KTCYx(200);
+    Delay10KTCYx(200);
+    Delay10KTCYx(200);
+    Delay10KTCYx(200);
+    while (BusyXLCD());
+    WriteCmdXLCD(0x01); //Clear LCD
+    while (BusyXLCD());
+    SetDDRamAddr(0x00); //Première ligne Première colonne
+    while (BusyXLCD());
+    putrsXLCD("Bienvenue !");
     while (BusyXLCD());
     SetDDRamAddr(0x40);
     while (BusyXLCD());
     while (1) {
-        PORT_LED = 1;
-        Delay10KTCYx(200);
-        Delay10KTCYx(200);
-        Delay10KTCYx(200);
-        send_usart_pk('P', 'K', '0', '2');
-        PORT_LED = 0;
-        Delay10KTCYx(200);
-        Delay10KTCYx(200);
-        Delay10KTCYx(200);
-        send_usart_pk('P', 'K', '0', '3');
+        
     }
 
 }
@@ -218,16 +233,7 @@ void InterruptionHaute(void) {
     // GESTION INTERRUPTION USB
 
     if (INT_USB == 1) {
-        PORT_RELAIS = 0;
         trame_usb_recue_pk[cpt] = RCREG1;
-        //  caractere_usb_recu = RCREG1;
-        /*
-        if (trame_usb_recue_pk[cpt] == 0) {
-            toto = 0;
-            flag_rx_usb_completed = 1;
-
-        } else {
-         */
         while (TXSTA1bits.TRMT != 1);
         TXREG1 = trame_usb_recue_pk[cpt];
         while (BusyXLCD());
@@ -238,18 +244,29 @@ void InterruptionHaute(void) {
             check_root(trame_usb_recue_pk);
             cpt = 0;
         }
-        INT_USB = 0;
     }
 
     // Détection de pression de bouton
     if (INT_BOUTON == 1) {
         PORT_LED = 1;
         Delay10KTCYx(2);
-        if (UP == 0 || DOWN == 0 || LEFT == 0 || RIGHT == 0 || CENTER == 0) {
+        if (LEFT == 0) {
             flag_bouton_pressed = 1;
-
+            send_usart_pk('P', 'K', '0', '2');
         }
-
+        if (RIGHT == 0){
+            flag_bouton_pressed = 1;
+            send_usart_pk('P', 'K', '0', '3');
+        }
+        if (CENTER == 0) {
+            flag_bouton_pressed = 1;
+            send_usart_pk('P', 'K', '0', '0');
+        }
+        if (UP == 0) {
+            flag_bouton_pressed = 1;
+            send_usart_pk('k', 'i', 'k', 'i');
+        }
+        PORT_LED = 0;
         INT_BOUTON = 0;
     }
 }
@@ -261,36 +278,5 @@ void check_root(char *trame_usb_recue_pk) {
         SetDDRamAddr(0x00); //Première ligne Première colonne
         while (BusyXLCD());
         putrsXLCD("You R R00T !");
-        restart();
     }
-}
-
-void restart(void) {
-    Delay10KTCYx(200);
-    Delay10KTCYx(200);
-    while (BusyXLCD());
-    WriteCmdXLCD(0x01); //Clear LCD
-    while (BusyXLCD());
-    SetDDRamAddr(0x00); //Première ligne Première colonne
-    while (BusyXLCD());
-    putrsXLCD("Restarting ... ");
-    while (BusyXLCD());
-    SetDDRamAddr(0x40);
-    while (BusyXLCD());
-    putrsXLCD("TiOS 0.42 - 2014");
-    while (BusyXLCD());
-    Delay10KTCYx(200);
-    Delay10KTCYx(200);
-    PORT_RELAIS = PORT_LED = 0;
-    while (BusyXLCD());
-    WriteCmdXLCD(0x01); //Clear LCD
-    while (BusyXLCD());
-    SetDDRamAddr(0x00); //Première ligne Première colonne
-    while (BusyXLCD());
-    putrsXLCD("Montrez badge et");
-    while (BusyXLCD());
-    SetDDRamAddr(0x40);
-    while (BusyXLCD());
-    putrsXLCD("pressez 1 bouton");
-    while (BusyXLCD());
 }
