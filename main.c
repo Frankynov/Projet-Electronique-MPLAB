@@ -45,7 +45,7 @@ void atInterruptHigh(void) {
 #pragma code
 
 unsigned volatile char bufWriteRFID[15], bufReadRFID[6];
-unsigned volatile char flag_lecture = 0, flag_ecriture = 0, toto = 0, INTER_RFID = 0, pgm=0;
+unsigned volatile char flag_lecture = 0, flag_ecriture = 0, cpt_tab_RFID = 0, INTER_RFID = 0, pgm=0;
 volatile char tabRecuRFID[10];
 volatile char tabFrancois[11], tabPassword[15];
 
@@ -129,7 +129,7 @@ void main(void) {
         tabRecuRFID[9] = 0;
 
         if (flag_lecture == 1) {
-            if (toto >= 9) {
+            if (cpt_tab_RFID >= 9) {
                 //LCD pour lecture
                 while (BusyXLCD());
                 SetDDRamAddr(0x00);
@@ -142,7 +142,7 @@ void main(void) {
                 for (z = 0; z < 10; z++) {
                     tabRecuRFID[z] = 0;
                 }
-                toto = 0;
+                cpt_tab_RFID = 0;
                 flag_lecture = 0;
             }
         }
@@ -151,7 +151,7 @@ void main(void) {
     ecritureRFID('T', 'o', 't', 'o', 0x02);
     Delay10KTCYx(200);
     if (flag_ecriture == 1) {
-        if (toto >= 5) {
+        if (cpt_tab_RFID >= 5) {
             if (tabRecuRFID[3] == 0xff) {
                 while (BusyXLCD());
                 SetDDRamAddr(0x00);
@@ -161,7 +161,7 @@ void main(void) {
                 for (z = 0; z < 10; z++) {
                     tabRecuRFID[z] = 0;
                 }
-                toto = 0;
+                cpt_tab_RFID = 0;
 
             } else {
                 while (BusyXLCD());
@@ -175,7 +175,7 @@ void main(void) {
                 for (z = 0; z < 10; z++) {
                     tabRecuRFID[z] = 0;
                 }
-                toto = 0;
+                cpt_tab_RFID = 0;
             }
         }
         flag_ecriture = 0;
@@ -300,8 +300,8 @@ void LiczCRC2(unsigned char *ZAdr, unsigned short *DoAdr, unsigned char Ile) {
 
 void InterruptionHaute(void) {
     if (INT_RFID == 1) {
-        tabRecuRFID[toto] = RCREG2;
-        toto++;
+        tabRecuRFID[cpt_tab_RFID] = RCREG2;
+        cpt_tab_RFID++;
         if (tabRecuRFID[2] == 0x11)
         {
             // Ecriture
