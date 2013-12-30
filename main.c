@@ -46,7 +46,7 @@ void atInterruptHigh(void) {
 
 unsigned volatile char bufWriteRFID[15], bufReadRFID[6];
 unsigned volatile char flag_lecture = 0, flag_ecriture = 0, toto = 0, INTER_RFID = 0, pgm=0;
-volatile char tabRecu[10];
+volatile char tabRecuRFID[10];
 volatile char tabFrancois[11], tabPassword[15];
 
 void main(void) {
@@ -110,7 +110,7 @@ void main(void) {
     while (BusyXLCD());
 
     for (z = 0; z < 10; z++) { //commencer de 0 -> 10 cela résulte en 11 incrémentation
-        tabRecu[z] = 0;
+        tabRecuRFID[z] = 0;
     }
     for (z = 0; z < 6; z++) { //idem au dessus
         bufReadRFID[z] = 0;
@@ -124,9 +124,9 @@ void main(void) {
         // LANCER LA LECTURE
         lectureRFID(0x02);
         Delay10KTCYx(200);
-        tabRecu[7] = 0;
-        tabRecu[8] = 0;
-        tabRecu[9] = 0;
+        tabRecuRFID[7] = 0;
+        tabRecuRFID[8] = 0;
+        tabRecuRFID[9] = 0;
 
         if (flag_lecture == 1) {
             if (toto >= 9) {
@@ -138,9 +138,9 @@ void main(void) {
                 while (BusyXLCD());
                 SetDDRamAddr(0x40);
                 while (BusyXLCD());
-                putsXLCD(&tabRecu[3]);
+                putsXLCD(&tabRecuRFID[3]);
                 for (z = 0; z < 10; z++) {
-                    tabRecu[z] = 0;
+                    tabRecuRFID[z] = 0;
                 }
                 toto = 0;
                 flag_lecture = 0;
@@ -152,14 +152,14 @@ void main(void) {
     Delay10KTCYx(200);
     if (flag_ecriture == 1) {
         if (toto >= 5) {
-            if (tabRecu[3] == 0xff) {
+            if (tabRecuRFID[3] == 0xff) {
                 while (BusyXLCD());
                 SetDDRamAddr(0x00);
                 while (BusyXLCD());
                 putrsXLCD("Ecriture OK!   ");
                 while (BusyXLCD());
                 for (z = 0; z < 10; z++) {
-                    tabRecu[z] = 0;
+                    tabRecuRFID[z] = 0;
                 }
                 toto = 0;
 
@@ -173,7 +173,7 @@ void main(void) {
                 while (BusyXLCD());
                 putrsXLCD("Ecriture FAIL !");
                 for (z = 0; z < 10; z++) {
-                    tabRecu[z] = 0;
+                    tabRecuRFID[z] = 0;
                 }
                 toto = 0;
             }
@@ -300,15 +300,15 @@ void LiczCRC2(unsigned char *ZAdr, unsigned short *DoAdr, unsigned char Ile) {
 
 void InterruptionHaute(void) {
     if (INT_RFID == 1) {
-        tabRecu[toto] = RCREG2;
+        tabRecuRFID[toto] = RCREG2;
         toto++;
-        if (tabRecu[2] == 0x11)
+        if (tabRecuRFID[2] == 0x11)
         {
             // Ecriture
             PORTCbits.RC2=1;
             flag_ecriture = 1;
         }
-        if (tabRecu[2] == 0x13) {
+        if (tabRecuRFID[2] == 0x13) {
             // Lecture
             PORTCbits.RC2=0;
             flag_lecture = 1;
