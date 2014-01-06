@@ -66,22 +66,31 @@ void reset_tableau_USB(void);
 void reset_tableau_RFID(void);
 void analyser_trame_recue(void);
 void ecriture_PK_RFID(void);
+void lectureRFID(char);
 void LiczCRC2(unsigned char *, unsigned short *, unsigned char);
 void afficherLumiere(void);
+void deconnexion(void);
 
 /*
  ### DECLARATION DES VARIABLES GLOBALES ###
+ * Boutons
+ * USART 1 USB
+ * CAN
  */
-volatile unsigned char flag_bouton_pressed = 0, flag_debut_trame_USB = 0, cpt_tab_USB = 0;
-volatile unsigned char flag_fin_trame_USB = 0, flag_prenom_recu_USB = 0, flag_new_PK_recue_USB = 0;
-volatile unsigned char flag_fin_trame_RFID_envoyee = 0, flag_fin_trame_RFID_recue = 0;
+volatile unsigned char flag_bouton_lecture = 0, flag_bouton_ecriture = 0, flag_bouton_central = 0, flag_bouton_deconnexion = 0;
+volatile unsigned char flag_fin_trame_USB = 0, cpt_tab_USB = 0, flag_prenom_recu_USB = 0, flag_new_PK_recue_USB = 0;
 volatile char caractere_usb_recu;
-volatile char tabPrenomRecuUSB[20];
 volatile char tabRecuUSB[20];
-volatile char tabKeyRecuUSB[4];
 volatile char bufferLumiere [20];
+
+/*
+ ### DECLARATION DES VARIABLES GLOBALES RFID###
+ */
 volatile unsigned char bufWriteRFID[15], bufReadRFID[6];
-volatile char bufRecuRFID;
+unsigned volatile char flag_lecture_RFID = 0, flag_ecriture_RFID = 0, iRec = 0;
+volatile char tabReponseRFID[15];
+volatile char tabLectureRFID[5];
+volatile unsigned char bufWriteRFID[15], bufReadRFID[6];
 
 /*
  ### DECLARATION DES INTERRUPTIONS ###
@@ -99,13 +108,6 @@ void atInterruptLow(void) {
     _asm GOTO InterruptionBasse _endasm
 }
 #pragma code
-
-/*
- ### DECLARATION DES VARIABLES GLOBALES ###
- */
-unsigned volatile char bufWriteRFID[15], bufReadRFID[6];
-unsigned volatile char flag_lecture_RFID = 0, flag_ecriture_RFID = 0, cpt_tab_RFID = 0, pgm = 0, isRoot = 0;
-volatile char tabRecuRFID[10];
 
 void main(void) {
     OSCCONbits.IRCF = 0b111; // 16MHz
@@ -216,6 +218,11 @@ void main(void) {
     OpenXLCD(FOUR_BIT & LINES_5X7);
     reset_tableau_USB();
     reset_tableau_RFID();
+    tabLectureRFID[0] = 0;
+    tabLectureRFID[1] = 0;
+    tabLectureRFID[2] = 0;
+    tabLectureRFID[3] = 0;
+    tabLectureRFID[4] = 0;
     //AFFICHAGE AU DEMARRAGE
     while (BusyXLCD());
     WriteCmdXLCD(0x01); //Clear LCD
@@ -233,21 +240,54 @@ void main(void) {
     Delay10KTCYx(200);
     Delay10KTCYx(200);
     Delay10KTCYx(200);
-    while (BusyXLCD());
-    WriteCmdXLCD(0x01); //Clear LCD
-    while (BusyXLCD());
-    SetDDRamAddr(0x00); //Première ligne Première colonne
-    while (BusyXLCD());
-    putrsXLCD("Show badge &");
-    while (BusyXLCD());
-    SetDDRamAddr(0x40);
-    while (BusyXLCD());
-    putrsXLCD("Press left Key ");
-    while (BusyXLCD());
+    // Affichage du premier écran pour connecter un utilisateur
+    deconnexion();
 
 
+    /*
+     *
+     * BOUCLE PRINCIPALE DU PROGRAMME
+     * Chargée de vérifier en permanence
+     * les différents FLAGS et déclencher
+     * les fonctions appropriées
+     *
+     */
 
     while (1) {
+        if (flag_bouton_lecture == 1) {
+            SetDDRamAddr(0x00);
+            while (BusyXLCD());
+            putrsXLCD("Reading...  ");
+            while (BusyXLCD());
+            Delay10KTCYx(120);
+            lectureRFID(0x02);
+            flag_bouton_lecture = 0;
+        }
+        if (flag_bouton_ecriture == 1) {
+            SetDDRamAddr(0x00);
+            while (BusyXLCD());
+            putrsXLCD("Writing...  ");
+            while (BusyXLCD());
+            ecriture_PK_RFID();
+            flag_bouton_ecriture = 0;
+        }
+        if (flag_bouton_deconnexion == 1) {
+            deconnexion();
+            flag_bouton_deconnexion = 0;
+        }
+        // TODO DEBUG : Permet d'écrire un PK admin !!
+        if (flag_bouton_central == 1) {
+            SetDDRamAddr(0x00);
+            while (BusyXLCD());
+            putrsXLCD("Writing ROOT tag");
+            while (BusyXLCD());
+            tabRecuUSB[2] = 'P';
+            tabRecuUSB[3] = 'K';
+            tabRecuUSB[4] = '0';
+            tabRecuUSB[5] = '0';
+            ecriture_PK_RFID();
+            flag_bouton_central = 0;
+        }
         if (flag_fin_trame_USB == 1) {
             analyser_trame_recue();
             flag_fin_trame_USB = 0;
@@ -264,50 +304,69 @@ void main(void) {
             while (BusyXLCD());
             putrsXLCD("Press Right Key");
             while (BusyXLCD());
+            flag_new_PK_recue_USB = 0;
+
         }
+
+        if (flag_lecture_RFID == 1) {
+            if (iRec >= 9) {
+                if (tabReponseRFID[7] == 0xff) {
+                    while (BusyXLCD());
+                    WriteCmdXLCD(0x01); //Clear LCD
+                    while (BusyXLCD());
+                    SetDDRamAddr(0x00);
+                    while (BusyXLCD());
+                    putrsXLCD("Reading OK!  ");
+                    Delay10KTCYx(200);
+                    Delay10KTCYx(200);
+                    send_usart_pk(tabReponseRFID[3], tabReponseRFID[4], tabReponseRFID[5], tabReponseRFID[6]);
+                    reset_tableau_RFID();
+                } else {
+                    while (BusyXLCD());
+                    WriteCmdXLCD(0x01); //Clear LCD
+                    while (BusyXLCD());
+                    SetDDRamAddr(0x00);
+                    while (BusyXLCD());
+                    putrsXLCD("Reading err.");
+                    while (BusyXLCD());
+                    SetDDRamAddr(0x40);
+                    while (BusyXLCD());
+                    putrsXLCD("Try again ?");
+                    reset_tableau_RFID();
+                }
+            }
+            flag_lecture_RFID = 0;
+        }
+
         if (flag_ecriture_RFID == 1) {
-            if (cpt_tab_RFID >= 5) {
-                if (tabRecuRFID[3] == 0xff) {
+            if (iRec >= 5) {
+                if (tabReponseRFID[3] == 0xff) {
                     while (BusyXLCD());
                     WriteCmdXLCD(0x01);
                     while (BusyXLCD());
                     SetDDRamAddr(0x00);
                     while (BusyXLCD());
-                    putrsXLCD("Ecriture WIN ! ");
+                    putrsXLCD("Success !");
                     while (BusyXLCD());
+                    // Simulation du redémarrage de la carte pour un nouvel utilisateur
+                    deconnexion();
                 } else {
                     while (BusyXLCD());
                     WriteCmdXLCD(0x01);
                     while (BusyXLCD());
                     SetDDRamAddr(0x00);
                     while (BusyXLCD());
-                    putrsXLCD("Ecriture FAIL !");
+                    putrsXLCD("FAIL !   ");
                     while (BusyXLCD());
+                    SetDDRamAddr(0x40);
+                    while (BusyXLCD());
+                    putrsXLCD("Try again ?");
                 }
                 flag_ecriture_RFID = 0;
                 while (BusyXLCD());
                 SetDDRamAddr(0x00);
                 reset_tableau_RFID();
             }
-
-        }
-        if (flag_lecture_RFID == 1) {
-            if (cpt_tab_RFID >= 5) {
-                if (tabRecuRFID[7] == 0xff) {
-                    while (BusyXLCD());
-                    WriteCmdXLCD(0x01);
-                    while (BusyXLCD());
-                    SetDDRamAddr(0x00);
-                    while (BusyXLCD());
-                    putrsXLCD("RFID OK !       ");
-                    while (BusyXLCD());
-                    Delay10KTCYx(200);
-                    Delay10KTCYx(200);
-                    send_usart_pk(tabRecuRFID[3], tabRecuRFID[4], tabRecuRFID[5], tabRecuRFID[6]);
-                }
-                flag_lecture_RFID = 0;
-            }
-
         }
     }
 }
@@ -331,13 +390,13 @@ void InterruptionHaute(void) {
     // GESTION INTERRUPTION RFID
 
     if (INT_USART_RFID == 1) {
-        tabRecuRFID[cpt_tab_RFID] = RCREG2;
-        cpt_tab_RFID++;
-        if (tabRecuRFID[2] == 0x11) {
+        tabReponseRFID[iRec] = RCREG2;
+        iRec++;
+        if (tabReponseRFID[2] == 0x11) {
             // Ecriture
             flag_ecriture_RFID = 1;
         }
-        if (tabRecuRFID[2] == 0x13) {
+        if (tabReponseRFID[2] == 0x13) {
             // Lecture
             flag_lecture_RFID = 1;
         }
@@ -363,28 +422,22 @@ void InterruptionHaute(void) {
         Delay10KTCYx(2);
         PORT_LED = 1;
         if (LEFT == 0) {
-            flag_bouton_pressed = 1;
-            //TODO : implémenter appel lecture RFID
-            send_usart_pk('P', 'K', '0', '2');
+            flag_bouton_lecture = 1;
         }
         if (RIGHT == 0) {
-            flag_bouton_pressed = 1;
-            if (flag_new_PK_recue_USB == 1) {
-                flag_new_PK_recue_USB = 0;
-                ecriture_PK_RFID();
-            } else
-                send_usart_pk('P', 'K', '0', '3');
+            flag_bouton_ecriture = 1;
         }
         if (CENTER == 0) {
-            flag_bouton_pressed = 1;
+            flag_bouton_central = 1;
             send_usart_pk('P', 'K', '0', '0');
         }
         if (UP == 0) {
-            flag_bouton_pressed = 1;
-            send_usart_pk('k', 'i', 'k', 'i');
+            flag_bouton_deconnexion = 1;
         }
         if (DOWN == 0) {
-            flag_bouton_pressed = 1;
+            //flag_bouton_lecture = 1;
+            // TODO DEBUG : Si pas de module RFID
+            send_usart_pk('P', 'K', '0', '2');
         }
 
         PORT_LED = 0;
@@ -407,13 +460,13 @@ void InterruptionBasse(void) {
 void analyser_trame_recue(void) {
     unsigned char i = 2;
     // Cette fonction permet d'analyser le contenu du tableau reçu via USART USB
-    // Cas d'un tableau de prénom
+    // Cas d'un tableau de prénom --> On l'affiche sur le LCD
     if (tabRecuUSB[0] == '#' && tabRecuUSB[1] == 'P') {
         flag_prenom_recu_USB = 1;
         while (BusyXLCD());
         WriteCmdXLCD(0x01);
         while (BusyXLCD());
-        putrsXLCD("Bienvenue,");
+        putrsXLCD("Welcome,");
         while (BusyXLCD());
         SetDDRamAddr(0x40);
         while (BusyXLCD());
@@ -430,6 +483,8 @@ void analyser_trame_recue(void) {
         reset_tableau_USB();
     }
     // Cas d'un tableau de nouvelle PK
+    // -> Activation du flag
+    // -> Ecriture de la PK via RFID à partir de la boucle While
     if (tabRecuUSB[0] == '#' && tabRecuUSB[1] == 'K') {
         flag_new_PK_recue_USB = 1;
         while (BusyXLCD());
@@ -457,8 +512,8 @@ void reset_tableau_USB(void) {
 void reset_tableau_RFID(void) {
     unsigned char j;
     for (j = 0; j < 14; j++) {
-        tabRecuRFID[j] = 0;
-        cpt_tab_RFID = 0;
+        tabReponseRFID[j] = 0;
+        iRec = 0;
     }
 }
 
@@ -496,7 +551,7 @@ void ecriture_PK_RFID(void) {
 }
 
 void lectureRFID(char dataSector) {
-    unsigned int i;
+    unsigned char send = 0, tmp;
     /*      Description of the SectorRead command frame
      *
      *      bufRFID[0] = Module Address (0xff to target all the cards)
@@ -511,16 +566,19 @@ void lectureRFID(char dataSector) {
     bufReadRFID[2] = 0x12;
     bufReadRFID[3] = dataSector;
     LiczCRC2(bufReadRFID, (unsigned short *) &bufReadRFID[4], 4);
-
-    i = bufReadRFID[4];
+    // Inversion des cases 4 et 5
+    tmp = bufReadRFID[4];
     bufReadRFID[4] = bufReadRFID[5];
-    bufReadRFID[5] = i;
+    bufReadRFID[5] = tmp;
 
+    TXREG2 = bufReadRFID[send];
+    send++;
 
-    // Sends the all frame
-    for (i = 0; i < 6; i++) {
-        while (TXSTA2bits.TRMT2 != 1);
-        TXREG2 = bufReadRFID[i];
+    // Envoi complet de la trame
+    while (send <= 5) {
+        while (TXSTA2bits.TRMT != 1);
+        TXREG2 = bufReadRFID[send];
+        send++;
     }
 }
 
@@ -560,5 +618,29 @@ void afficherLumiere(void) {
     // On replace le pointeur à la dernière case, 2ème ligne
     while (BusyXLCD());
     SetDDRamAddr(0x4f);
+    while (BusyXLCD());
+}
+
+void deconnexion(void) {
+    while (BusyXLCD());
+    WriteCmdXLCD(0x01); //Clear LCD
+    while (BusyXLCD());
+    SetDDRamAddr(0x00);
+    while (BusyXLCD());
+    putrsXLCD("Loading...  ");
+    Delay10KTCYx(200);
+    Delay10KTCYx(200);
+
+
+    while (BusyXLCD());
+    WriteCmdXLCD(0x01); //Clear LCD
+    while (BusyXLCD());
+    SetDDRamAddr(0x00); //Première ligne Première colonne
+    while (BusyXLCD());
+    putrsXLCD("Show badge &");
+    while (BusyXLCD());
+    SetDDRamAddr(0x40);
+    while (BusyXLCD());
+    putrsXLCD("Press left Key ");
     while (BusyXLCD());
 }
